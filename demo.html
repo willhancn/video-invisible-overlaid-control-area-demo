@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        .video-container {
+            width: 1600px;
+        }
+
+        .video-container> :first-child {
+            width: 100%;
+        }
+
+        .video-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            user-select: none;
+        }
+
+        .overlay-top,
+        .overlay-middle,
+        .overlay-bottom {
+            position: absolute;
+            width: 100%;
+        }
+
+        .overlay-top {
+            top: 0;
+            height: 33%;
+            cursor: zoom-in;
+        }
+
+        .overlay-middle {
+            top: 33%;
+            height: 33%;
+            cursor: pointer;
+        }
+
+        .overlay-bottom {
+            top: 66%;
+            height: 34%;
+            cursor: e-resize;
+        }
+
+        .time-line-cursor {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+
+        .time-line-cursor-line {
+            position: absolute;
+            top: 12px;
+            width: 1px;
+            height: 100%;
+            border-left: 1px dashed rgba(255, 255, 255, 0.7);
+            transform: translateX(-0.5px);
+        }
+
+        .time-line-cursor-thumb {
+            position: absolute;
+            top: 0;
+            width: 10px;
+            height: 12px;
+            background-color: rgba(255, 255, 255, 0.7);
+            clip-path: polygon(0 0,
+                    100% 0,
+                    100% 50%,
+                    50% 100%,
+                    0 50%);
+            transform: translateX(-5px);
+        }
+
+        @media (hover: none) {
+            .video-overlay {
+                display: none;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
+</head>
+
+<body>
+    <h1>Proposal 1</h1>
+    <div id="myVideoContainer1" class="video-container" style="width: 1600px;">
+        <video id="myVideo1" data-poster="https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-HD.jpg">
+            <source src="https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" type="video/mp4">
+        </video>
+    </div>
+    <h1>Proposal 2</h1>
+    <div id="myVideoContainer2" class="video-container" style="width: 1600px;">
+        <video id="myVideo2" data-poster="https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-HD.jpg">
+            <source src="https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4" type="video/mp4">
+        </video>
+    </div>
+    <script>
+        const enterFullScreenCursor = 'url("data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjI0IiB3aWR0aD0iMjQiIHZpZXdCb3g9IjAgMCAxOCAxOCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayI+PHBhdGggc3R5bGU9ImZpbGw6IHdoaXRlOyBzdHJva2Utd2lkdGg6IDAuNTsgc3Ryb2tlOiBibGFjayIgZD0iTTEwIDNoMy42bC00IDRMMTEgOC40bDQtNFY4aDJWMWgtN3pNNyA5LjZsLTQgNFYxMEgxdjdoN3YtMkg0LjRsNC00eiI+PC9wYXRoPjwvc3ZnPg=="), zoom-in';
+        const exitFullScreenCursor = 'url("data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjI0IiB3aWR0aD0iMjQiIHZpZXdCb3g9IjAgMCAxOCAxOCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayI+PHBhdGggc3R5bGU9ImZpbGw6IHdoaXRlOyBzdHJva2Utd2lkdGg6IDAuNTsgc3Ryb2tlOiBibGFjayIgZD0iTTEgMTJoMy42bC00IDRMMiAxNy40bDQtNFYxN2gydi03SDF6TTE2IC42bC00IDRWMWgtMnY3aDdWNmgtMy42bDQtNHoiPjwvcGF0aD48L3N2Zz4="), zoom-out';
+
+        function VideoPlayerUi(containerDom, videoDom, uiOptions) {
+            if (containerDom == null || videoDom == null) {
+                throw new Error("empty container / video DOM");
+            }
+            if (!containerDom.contains(videoDom)) {
+                throw new Error("container should contains video DOM");
+            }
+
+            const _this = this;
+            this.containerDom = containerDom;
+            this.rawVideoDom = videoDom;
+            this.timeLineCursorType = "default";
+            if (uiOptions != null && uiOptions.timeLineCursorType != null) {
+                this.timeLineCursorType = uiOptions.timeLineCursorType;
+            }
+
+            const defaultOptions = {
+                controls: [
+                    'play-large',
+                    // 'restart',
+                    // 'rewind',
+                    'play',
+                    // 'fast-forward',
+                    'progress',
+                    'current-time',
+                    'duration',
+                    'mute',
+                    'volume',
+                    'captions',
+                    'settings',
+                    // 'pip',
+                    // 'airplay',
+                    'fullscreen',
+                ],
+                disableContextMenu: false,
+                listeners: {
+                    fullscreen: function () {
+                        if (_this._onFullScreen != null) {
+                            _this._onFullScreen();
+                        }
+                    }
+                },
+            };
+            const finalOptions = { ...defaultOptions, ...uiOptions };
+            if (uiOptions != null && uiOptions.listeners != null && uiOptions.listeners.fullscreen == null) {
+                finalOptions.listeners.fullscreen = defaultOptions.listeners.fullscreen;
+            }
+
+            this.plyr = new Plyr(this.rawVideoDom, finalOptions);
+            this._initVideoPlayerUiEnhancement();
+        }
+
+        VideoPlayerUi.prototype._initVideoPlayerUiEnhancement = function () {
+            const enhancementDomHtml =
+                `<div class="video-overlay">
+                <div class="overlay-top"></div>
+                <div class="overlay-middle"></div>
+                <div class="overlay-bottom"></div>
+            </div>`;
+            const tempDivDom = document.createElement("div");
+            tempDivDom.innerHTML = enhancementDomHtml;
+
+            const videoOverlayDom = tempDivDom.firstChild;
+            this.overlayTop = videoOverlayDom.querySelector('.overlay-top');
+            this.overlayMiddle = videoOverlayDom.querySelector('.overlay-middle');
+            this.overlayBottom = videoOverlayDom.querySelector('.overlay-bottom');
+
+            this.controlsDom = this.containerDom.querySelector('.plyr__controls');
+            this.progressDom = this.containerDom.querySelector('.plyr__progress');
+            this.seekInput = this.containerDom.querySelector('input[data-plyr="seek"]');
+
+            videoOverlayDom.addEventListener('dblclick', (event) => {
+                event.returnValue = false;
+                event.cancelBubble = true;
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation();
+            });
+
+            // Top Area - toggle fullScreen
+            this._initFullScreenArea();
+
+            // Middle Area - toggle play/pause
+            this._initPlayPauseArea();
+
+            // Bottom Area - time line and seek
+            this._initTimeLineArea();
+
+            // insert overlay
+            const plyrRootDom = this.containerDom.querySelector('.plyr--full-ui');
+            if (plyrRootDom.firstChild) {
+                plyrRootDom.insertBefore(videoOverlayDom, plyrRootDom.firstChild.nextSibling);
+            } else {
+                plyrRootDom.appendChild(videoOverlayDom);
+            }
+        };
+
+        VideoPlayerUi.prototype._initFullScreenArea = function () {
+            const _this = this;
+            this.overlayTop.style.cursor = enterFullScreenCursor;
+            this.overlayTop.addEventListener('click', function () {
+                if (_this.plyr.fullscreen.active) {
+                    _this.overlayTop.style.cursor = enterFullScreenCursor;
+                } else {
+                    _this.overlayTop.style.cursor = exitFullScreenCursor;
+                }
+                _this.plyr.fullscreen.toggle();
+            });
+        };
+
+        VideoPlayerUi.prototype._initPlayPauseArea = function () {
+            const _this = this;
+            this.overlayMiddle.addEventListener('click', function () {
+                _this.plyr.togglePlay();
+            });
+        };
+
+        VideoPlayerUi.prototype._initTimeLineArea = function () {
+            const _this = this;
+            _this.overlayBottom.addEventListener('mouseenter', function () {
+                const enterEvent = new MouseEvent('mouseenter', {
+                    bubbles: false,
+                    relatedTarget: document.body,
+                });
+                _this.progressDom.dispatchEvent(enterEvent);
+
+                _this.controlsDom.dispatchEvent(new MouseEvent('mouseenter', {
+                    bubbles: false,
+                    relatedTarget: document.body,
+                }));
+            });
+            _this.overlayBottom.addEventListener('mousemove', function (event) {
+                const point = _this._getDummyEventLocation(event);
+                const moveEvent = new MouseEvent('mousemove', {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: point.clientX,
+                    clientY: point.clientY,
+                });
+                _this.seekInput.dispatchEvent(moveEvent);
+
+                if (_this.timeLineCursor != null) {
+                    const overlayBottomRect = _this.overlayBottom.getBoundingClientRect();
+                    const progressDomTop = _this.progressDom.getBoundingClientRect().top;
+
+                    const relativeX = point.clientX - overlayBottomRect.left;
+                    const percentage = relativeX * 100 / overlayBottomRect.width;
+                    _this.timeLineCursor.style.display = 'block';
+                    _this.timeLineCursorThumb.style.left = percentage + `%`;
+                    _this.timeLineCursorLine.style.left = percentage + `%`;
+                    const lineBottom = overlayBottomRect.bottom - progressDomTop;
+                    _this.timeLineCursorLine.style.bottom = lineBottom + "px";
+                    _this.timeLineCursorLine.style.height = "auto";
+                }
+            });
+            _this.overlayBottom.addEventListener('mouseleave', function (event) {
+                const eventX = event.clientX;
+                const targetRect = _this.seekInput.getBoundingClientRect();
+                const targetEventClientY = targetRect.top;
+                const leaveEvent = new MouseEvent('mouseleave', {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: eventX,
+                    clientY: targetEventClientY,
+                });
+                _this.seekInput.dispatchEvent(leaveEvent);
+
+                _this.controlsDom.dispatchEvent(new MouseEvent('mouseleave', {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: eventX,
+                    clientY: targetEventClientY,
+                }));
+
+                if (_this.timeLineCursor != null) {
+                    _this.timeLineCursor.style.display = 'none';
+                }
+            });
+
+            if (_this.timeLineCursorType === "vertical-cursor") {
+                _this._initTimeLineVerticalCursorEnhancement();
+            }
+            // _this._seekCurrentTimeByApi();  // terrible user experience: when the video needs to load the UI is unresponsive
+            _this._seekCurrentTimeByMouseEvent();
+        };
+
+        VideoPlayerUi.prototype._initTimeLineVerticalCursorEnhancement = function () {
+            this.overlayBottom.innerHTML =
+                `<div class="time-line-cursor">
+                    <div class="time-line-cursor-thumb"></div>
+                    <div class="time-line-cursor-line"></div>
+                </div>`;
+            this.timeLineCursor = this.overlayBottom.querySelector('.time-line-cursor');
+            this.timeLineCursorThumb = this.overlayBottom.querySelector('.time-line-cursor-thumb');
+            this.timeLineCursorLine = this.overlayBottom.querySelector('.time-line-cursor-line');
+
+            this.overlayBottom.style.cursor = "none";
+        };
+
+        VideoPlayerUi.prototype._seekCurrentTimeByApi = function () {
+            const _this = this;
+            _this.overlayBottom.addEventListener('click', function (event) {
+                const percentage = _this._getSeekPercentageByOuterEvent(event);
+                _this.plyr.currentTime = percentage * _this.plyr.duration;
+            });
+        };
+
+        VideoPlayerUi.prototype._seekCurrentTimeByMouseEvent = function () {
+            const _this = this;
+            this.mousePressed = false;
+            _this.overlayBottom.addEventListener('mousedown', function (event) {
+                const point = _this._getDummyEventLocation(event);
+                function newDummyEvt() {
+                    return new MouseEvent('mousedown', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: point.clientX,
+                        clientY: point.clientY,
+                        button: 0,
+                        buttons: 1,
+                        ctrlKey: false,
+                        shiftKey: false,
+                    });
+                }
+                _this.seekInput.dispatchEvent(newDummyEvt());
+                _this._setSeekValueByOuterEvent(event);
+                _this.mousePressed = true;
+            });
+            _this.overlayBottom.addEventListener('mouseup', function (event) {
+                const point = _this._getDummyEventLocation(event);
+                function newDummyEvt() {
+                    return new MouseEvent('mouseup', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: point.clientX,
+                        clientY: point.clientY,
+                        button: 0,
+                        buttons: 1,
+                        ctrlKey: false,
+                        shiftKey: false,
+                    });
+                }
+                _this.seekInput.dispatchEvent(newDummyEvt());
+                _this.mousePressed = false;
+            });
+
+            _this.overlayBottom.addEventListener('mousemove', function (event) {
+                if (!_this.mousePressed) {
+                    return;
+                }
+                const point = _this._getDummyEventLocation(event);
+                const dummyMoveEvent = new MouseEvent('mousemove', {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: point.clientX,
+                    clientY: point.clientY,
+                });
+                _this.seekInput.dispatchEvent(dummyMoveEvent);
+                _this._setSeekValueByOuterEvent(event);
+            });
+        };
+
+        VideoPlayerUi.prototype._getDummyEventLocation = function (event) {
+            let eventX = event.clientX;
+            const targetRect = this.progressDom.getBoundingClientRect();
+            const targetEventClientY = targetRect.top;
+            if (eventX < targetRect.left) {
+                eventX = targetRect.left;
+            } else if (eventX > targetRect.right) {
+                eventX = targetRect.right;
+            }
+            return {
+                clientX: eventX,
+                clientY: targetEventClientY
+            };
+        };
+
+        VideoPlayerUi.prototype._setSeekValueByOuterEvent = function (event) {
+            const percentage = this._getSeekPercentageByOuterEvent(event);
+            const { min, max } = this.seekInput;
+            this.seekInput.value = parseFloat(min) + percentage * (max - min);
+
+            const inputEvent = new Event('input', {
+                bubbles: true,
+                cancelable: true
+            });
+            this.seekInput.dispatchEvent(inputEvent);
+        };
+
+        VideoPlayerUi.prototype._getSeekPercentageByOuterEvent = function (event) {
+            const { left, width } = this.progressDom.getBoundingClientRect();
+            const percentage = (event.clientX - left) / width;
+            return Math.max(0, Math.min(1, percentage)); // limit to range [0, 1]
+        };
+
+        VideoPlayerUi.prototype._onFullScreen = function () {
+            if (this.plyr.fullscreen.active) {
+                this.overlayTop.style.cursor = enterFullScreenCursor;
+            } else {
+                this.overlayTop.style.cursor = exitFullScreenCursor;
+            }
+        };
+
+        VideoPlayerUi.prototype.destroy = function () {
+            this.plyr.destroy();
+        };
+
+        // ------------------------------------------------
+
+        const myVideoContainer1 = document.querySelector("#myVideoContainer1");
+        const myVideo1 = document.querySelector("#myVideo1");
+        new VideoPlayerUi(myVideoContainer1, myVideo1, {
+            previewThumbnails: {
+                enabled: false,
+                src: [
+                    "https://cdn.plyr.io/static/demo/thumbs/100p.vtt",
+                    "https://cdn.plyr.io/static/demo/thumbs/240p.vtt"
+                ]
+            }
+        });
+
+        const myVideoContainer2 = document.querySelector("#myVideoContainer2");
+        const myVideo2 = document.querySelector("#myVideo2");
+        new VideoPlayerUi(myVideoContainer2, myVideo2, { timeLineCursorType: "vertical-cursor" });
+
+    </script>
+</body>
+
+</html>
